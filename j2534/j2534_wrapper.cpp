@@ -26,3 +26,19 @@ long PassThruSetProgrammingVoltage(unsigned long DeviceID, unsigned long Pin, un
 long PassThruReadVersion(char* pApiVersion, char* pDllVersion, char* pFirmwareVersion, unsigned long DeviceID) { return s_j2534.PassThruReadVersion(pApiVersion, pDllVersion, pFirmwareVersion, DeviceID); }
 long PassThruGetLastError(char* pErrorDescription) { return s_j2534.PassThruGetLastError(pErrorDescription); }
 long PassThruIoctl(unsigned long ChannelID, unsigned long IoctlID, const void* pInput, void* pOutput) { return s_j2534.PassThruIoctl(ChannelID, IoctlID, pInput, pOutput); }
+long PassThru5BaudInit(unsigned long ChannelID, unsigned char InitID) { 
+	SBYTE_ARRAY InputMsg;
+	SBYTE_ARRAY OutputMsg;
+
+	unsigned char EcuAddr[1]; // ECU target address array
+	unsigned char KeyWord[2]; // Keyword identifier array
+
+	EcuAddr[0] = InitID; // Initialization address used to activate all ECUs
+
+	InputMsg.NumOfBytes = 1; // ECU target address array contains one address.
+	InputMsg.BytePtr = &EcuAddr[0]; // Assign pointer to ECU target address array.
+	OutputMsg.NumOfBytes = 2; // KeyWord array has 2 bytes allocated.
+	OutputMsg.BytePtr = &KeyWord[0]; // Assign pointer to KeyWord array.
+
+	return s_j2534.PassThruIoctl(ChannelID, FIVE_BAUD_INIT, &InputMsg, &OutputMsg);
+}

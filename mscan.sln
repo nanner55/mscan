@@ -4,6 +4,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 16.0.29613.14
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "mscan", "mscan\mscan.csproj", "{DEEA2835-8DF7-480B-87DC-24DBFBDE8DA8}"
+	ProjectSection(ProjectDependencies) = postProject
+		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3} = {CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "j2534", "j2534\j2534.vcxproj", "{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}"
 EndProject
@@ -30,11 +33,13 @@ Global
 		{DEEA2835-8DF7-480B-87DC-24DBFBDE8DA8}.Release|x86.ActiveCfg = Release|Any CPU
 		{DEEA2835-8DF7-480B-87DC-24DBFBDE8DA8}.Release|x86.Build.0 = Release|Any CPU
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|Any CPU.ActiveCfg = Debug|Win32
+		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|Any CPU.Build.0 = Debug|Win32
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|x64.ActiveCfg = Debug|x64
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|x64.Build.0 = Debug|x64
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|x86.ActiveCfg = Debug|Win32
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Debug|x86.Build.0 = Debug|Win32
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Release|Any CPU.ActiveCfg = Release|Win32
+		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Release|Any CPU.Build.0 = Release|Win32
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Release|x64.ActiveCfg = Release|x64
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Release|x64.Build.0 = Release|x64
 		{CA4BBF22-35CB-4FFD-88AD-3B9F2A7A51D3}.Release|x86.ActiveCfg = Release|Win32

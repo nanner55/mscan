@@ -1,0 +1,7 @@
+.vs
+Debug
+Release
+j2534/Debug
+j2534/Release
+mscan/bin
+mscan/obj

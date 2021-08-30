@@ -26,3 +26,4 @@ extern "C" __declspec(dllexport) long PassThruSetProgrammingVoltage(unsigned lon
 extern "C" __declspec(dllexport) long PassThruReadVersion(char* pApiVersion, char* pDllVersion, char* pFirmwareVersion, unsigned long DeviceID);
 extern "C" __declspec(dllexport) long PassThruGetLastError(char* pErrorDescription);
 extern "C" __declspec(dllexport) long PassThruIoctl(unsigned long ChannelID, unsigned long IoctlID, const void* pInput, void* pOutput);
+extern "C" __declspec(dllexport) long PassThru5BaudInit(unsigned long ChannelID, unsigned char InitID);

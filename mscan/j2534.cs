@@ -30,6 +30,7 @@ namespace mscan
         [DllImport("j2534.dll", CallingConvention = CallingConvention.Cdecl)] public static extern Int32 PassThruReadVersion(Byte[] pApiVersion, Byte[] pDllVersion, Byte[] pFirmwareVersion, UInt32 DeviceID);
         [DllImport("j2534.dll", CallingConvention = CallingConvention.Cdecl)] public static extern Int32 PassThruGetLastError(Byte[] pErrorDescription);
         [DllImport("j2534.dll", CallingConvention = CallingConvention.Cdecl)] public static extern Int32 PassThruIoctl(UInt32 ChannelID, UInt32 IoctlID, IntPtr pInput, IntPtr pOutput);
+        [DllImport("j2534.dll", CallingConvention = CallingConvention.Cdecl)] public static extern Int32 PassThru5BaudInit(UInt32 ChannelID, Byte InitID);
 
         ////////////////
         // Protocol IDs
