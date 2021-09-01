@@ -17,7 +17,7 @@ namespace mscan
     {
 
         static int MAX_PARAM = 24;
-        static uint TIMEOUT = 100;
+        static uint TIMEOUT = 500;
         static uint LOG_MSG_SIZE = 0x33;
         static Byte TRAILER_VALUE = 0x0D;
 
