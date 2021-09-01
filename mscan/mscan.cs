@@ -171,12 +171,6 @@ namespace mscan
                 buttonConnect.Enabled = false;
                 buttonConnect.Update();
 
-                // stop the queueing threads to avoid threading issues with accessing PassThru library
-                mEnqueueTimer.Stop();
-                mEnqueueTimer.Dispose();
-                //mDequeueTimer.Stop();
-                //mDequeueTimer.Dispose();
-
                 // write logging cancel - NOTE: this hangs with a nonzero timeout
                 msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
                 msg.RxStatus = 0;
@@ -186,22 +180,16 @@ namespace mscan
                 msg.DataSize = LOG_MSG_SIZE;
                 for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x00;
                 Marshal.StructureToPtr(msg, pMsg, false);
-                numMsgs = 1;
-                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                //if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruWriteMsgs: cancel logging" + ret.ToString());
 
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
-                //if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruIoctl: CLEAR_MSG_FILTERS " + ret.ToString());
-
-                // restart the enqueue timer to drain remaining log data
-                mEnqueueTimer = new System.Timers.Timer();
-                mEnqueueTimer.Interval = mLogMsgInfo[mLogMsgType].Rate * 2;
-                mEnqueueTimer.AutoReset = true;
-                mEnqueueTimer.Elapsed += HandleEnqueue;
-                mEnqueueTimer.Start();
+                for (int i = 0; i < 5; i++)
+                {
+                    // spam clears
+                    numMsgs = 1;
+                    ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, 100);
+                }
 
                 // drain reads
-                Thread.Sleep(5000);
+                Thread.Sleep(2000);
 
                 // make sure all timers are stopped and events quiesced
                 mEnqueueTimer.Stop();
