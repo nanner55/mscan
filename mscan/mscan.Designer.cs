@@ -74,7 +74,10 @@
             this.chart2 = new System.Windows.Forms.DataVisualization.Charting.Chart();
             this.chart1 = new System.Windows.Forms.DataVisualization.Charting.Chart();
             this.panel3 = new System.Windows.Forms.Panel();
+            this.textBoxConsole = new System.Windows.Forms.TextBox();
             this.dataGridViewTable = new System.Windows.Forms.DataGridView();
+            this.buttonReadROM = new System.Windows.Forms.Button();
+            this.textBoxDelay = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewParam)).BeginInit();
             this.panel1.SuspendLayout();
             this.panel2.SuspendLayout();
@@ -179,7 +182,7 @@
             this.buttonConnect.FlatAppearance.MouseDownBackColor = System.Drawing.SystemColors.ControlDark;
             this.buttonConnect.Location = new System.Drawing.Point(0, 574);
             this.buttonConnect.Name = "buttonConnect";
-            this.buttonConnect.Size = new System.Drawing.Size(280, 22);
+            this.buttonConnect.Size = new System.Drawing.Size(70, 22);
             this.buttonConnect.TabIndex = 1;
             this.buttonConnect.Text = "Connect";
             this.buttonConnect.UseVisualStyleBackColor = true;
@@ -207,17 +210,17 @@
             this.comboBox2.TabIndex = 7;
             this.comboBox2.SelectedIndexChanged += new System.EventHandler(this.comboBox2_SelectedIndexChanged);
             // 
-            // buttonLoadROM
+            // buttonOpenROM
             // 
             this.buttonLoadROM.Dock = System.Windows.Forms.DockStyle.Left;
             this.buttonLoadROM.FlatAppearance.MouseDownBackColor = System.Drawing.SystemColors.ControlDark;
             this.buttonLoadROM.Location = new System.Drawing.Point(140, 0);
-            this.buttonLoadROM.Name = "buttonLoadROM";
+            this.buttonLoadROM.Name = "buttonOpenROM";
             this.buttonLoadROM.Size = new System.Drawing.Size(70, 22);
             this.buttonLoadROM.TabIndex = 6;
-            this.buttonLoadROM.Text = "LoadROM";
+            this.buttonLoadROM.Text = "OpenROM";
             this.buttonLoadROM.UseVisualStyleBackColor = true;
-            this.buttonLoadROM.Click += new System.EventHandler(this.buttonLoadROM_Click);
+            this.buttonLoadROM.Click += new System.EventHandler(this.buttonOpenROM_Click);
             // 
             // comboBox1
             // 
@@ -388,11 +391,25 @@
             | System.Windows.Forms.AnchorStyles.Right)));
             this.panel3.BackColor = System.Drawing.SystemColors.AppWorkspace;
             this.panel3.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.panel3.Controls.Add(this.textBoxConsole);
             this.panel3.Controls.Add(this.dataGridViewTable);
             this.panel3.Location = new System.Drawing.Point(430, 0);
             this.panel3.Name = "panel3";
             this.panel3.Size = new System.Drawing.Size(868, 598);
             this.panel3.TabIndex = 6;
+            // 
+            // textBoxConsole
+            // 
+            this.textBoxConsole.BackColor = System.Drawing.SystemColors.AppWorkspace;
+            this.textBoxConsole.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.textBoxConsole.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.textBoxConsole.Location = new System.Drawing.Point(0, 455);
+            this.textBoxConsole.Multiline = true;
+            this.textBoxConsole.Name = "textBoxConsole";
+            this.textBoxConsole.ReadOnly = true;
+            this.textBoxConsole.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.textBoxConsole.Size = new System.Drawing.Size(866, 141);
+            this.textBoxConsole.TabIndex = 1;
             // 
             // dataGridViewTable
             // 
@@ -420,7 +437,7 @@
             dataGridViewCellStyle3.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
             dataGridViewCellStyle3.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
             this.dataGridViewTable.DefaultCellStyle = dataGridViewCellStyle3;
-            this.dataGridViewTable.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.dataGridViewTable.Dock = System.Windows.Forms.DockStyle.Top;
             this.dataGridViewTable.EnableHeadersVisualStyles = false;
             this.dataGridViewTable.GridColor = System.Drawing.SystemColors.Desktop;
             this.dataGridViewTable.Location = new System.Drawing.Point(0, 0);
@@ -438,9 +455,29 @@
             this.dataGridViewTable.RowHeadersWidthSizeMode = System.Windows.Forms.DataGridViewRowHeadersWidthSizeMode.DisableResizing;
             this.dataGridViewTable.ScrollBars = System.Windows.Forms.ScrollBars.None;
             this.dataGridViewTable.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.CellSelect;
-            this.dataGridViewTable.Size = new System.Drawing.Size(866, 596);
+            this.dataGridViewTable.Size = new System.Drawing.Size(866, 460);
             this.dataGridViewTable.TabIndex = 0;
             this.dataGridViewTable.CellPainting += new System.Windows.Forms.DataGridViewCellPaintingEventHandler(this.dataGridViewTable_CellPainting);
+            // 
+            // buttonReadROM
+            // 
+            this.buttonReadROM.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.buttonReadROM.FlatAppearance.MouseDownBackColor = System.Drawing.SystemColors.ControlDark;
+            this.buttonReadROM.Location = new System.Drawing.Point(140, 574);
+            this.buttonReadROM.Name = "buttonReadROM";
+            this.buttonReadROM.Size = new System.Drawing.Size(70, 22);
+            this.buttonReadROM.TabIndex = 7;
+            this.buttonReadROM.Text = "ReadROM";
+            this.buttonReadROM.UseVisualStyleBackColor = true;
+            this.buttonReadROM.Click += new System.EventHandler(this.buttonReadROM_Click);
+            // 
+            // textBoxDelay
+            // 
+            this.textBoxDelay.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
+            this.textBoxDelay.Location = new System.Drawing.Point(70, 575);
+            this.textBoxDelay.Name = "textBoxDelay";
+            this.textBoxDelay.Size = new System.Drawing.Size(70, 20);
+            this.textBoxDelay.TabIndex = 8;
             // 
             // mscan
             // 
@@ -449,6 +486,8 @@
             this.AutoSize = true;
             this.BackColor = System.Drawing.SystemColors.AppWorkspace;
             this.ClientSize = new System.Drawing.Size(1296, 596);
+            this.Controls.Add(this.textBoxDelay);
+            this.Controls.Add(this.buttonReadROM);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.buttonConnect);
             this.Controls.Add(this.dataGridViewParam);
@@ -458,6 +497,7 @@
             this.MaximizeBox = false;
             this.Name = "mscan";
             this.Text = "mscan";
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.mscan_FormClosing);
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewParam)).EndInit();
             this.panel1.ResumeLayout(false);
             this.panel2.ResumeLayout(false);
@@ -468,8 +508,10 @@
             ((System.ComponentModel.ISupportInitialize)(this.chart2)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.chart1)).EndInit();
             this.panel3.ResumeLayout(false);
+            this.panel3.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridViewTable)).EndInit();
             this.ResumeLayout(false);
+            this.PerformLayout();
 
         }
 
@@ -496,6 +538,9 @@
         private System.Windows.Forms.DataGridViewTextBoxColumn paramValue;
         private System.Windows.Forms.DataGridViewTextBoxColumn paramUnit;
         private System.Windows.Forms.DataGridViewTextBoxColumn paramEval;
+        private System.Windows.Forms.Button buttonReadROM;
+        private System.Windows.Forms.TextBox textBoxDelay;
+        private System.Windows.Forms.TextBox textBoxConsole;
     }
 }
 
