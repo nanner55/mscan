@@ -204,7 +204,7 @@ namespace mscan
             for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x00;
             Marshal.StructureToPtr(msg, pMsg, false);
 
-            textBoxConsole.AppendText("DISCONNECT> PassThruWriteMsgs" + Environment.NewLine);
+            textBoxConsole.AppendText("DISCONN> PassThruWriteMsgs" + Environment.NewLine);
             //lock (mBuffer)
             {
                 for (int i = 0; i < 5; i++)
@@ -227,7 +227,7 @@ namespace mscan
             mDequeueTimer.Dispose();
 
             // 5 baud init test - NOTE: this fails, but that's ok.  It clears the DMA state machine.
-            textBoxConsole.AppendText("DISCONNECT> PassThru5BaudInit" + Environment.NewLine);
+            textBoxConsole.AppendText("DISCONN> PassThru5BaudInit" + Environment.NewLine);
             ret = (j2534.eError1)j2534.PassThru5BaudInit(mChannelId, 0x00);
 
             // sleep to wait for tactrix to power up again
@@ -236,11 +236,11 @@ namespace mscan
 
             // disconnect
             ret = (j2534.eError1)j2534.PassThruDisconnect(mChannelId);
-            textBoxConsole.AppendText("DISCONNECT> PassThruDisconnect" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruDisconnect: " + ret.ToString());
+            textBoxConsole.AppendText("DISCONN> PassThruDisconnect" + Environment.NewLine);
+            //if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruDisconnect: " + ret.ToString());
             ret = (j2534.eError1)j2534.PassThruClose(mDeviceId);
-            textBoxConsole.AppendText("DISCONNECT> PassThruClose" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruClose: " + ret.ToString());
+            textBoxConsole.AppendText("DISCONN> PassThruClose" + Environment.NewLine);
+            //if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruClose: " + ret.ToString());
 
             Thread.Sleep(1000);
 
@@ -504,6 +504,9 @@ namespace mscan
                             // TODO: support 1D, 2D, 3D tables
                             string category;
                             int tableAddress, loadAddress, loadElem, rpmAddress, rpmElem;
+
+                            textBoxConsole.AppendText("READROM> Table: " + tableName + " ..." + Environment.NewLine);
+
                             try
                             {
                                 category = tableNode.Attributes["category"].InnerText;
@@ -589,9 +592,12 @@ namespace mscan
                         // trailer
                         msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
 
-                        numMsgs = 1;
-                        Marshal.StructureToPtr(msg, pMsg, false);
-                        ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                        do
+                        {
+                            numMsgs = 1;
+                            Marshal.StructureToPtr(msg, pMsg, false);
+                            ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                        } while (ret != j2534.eError1.ERR_SUCCESS);
                     }
 
                     for (int rdBurst = 0; byteCnt + rdBurst * LOG_DAT_SIZE < length && rdBurst < BURST_LENGTH; rdBurst++)
@@ -604,14 +610,21 @@ namespace mscan
                         msg.ExtraDataIndex = 0;
                         msg.DataSize = 0;
 
-                        numMsgs = 1;
-                        Marshal.StructureToPtr(msg, pMsg, false);
-                        ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                        Marshal.PtrToStructure(pMsg, msg);
-                        numMsgs = 1;
-                        Marshal.StructureToPtr(msg, pMsg, false);
-                        ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                        Marshal.PtrToStructure(pMsg, msg);
+                        do
+                        {
+                            numMsgs = 1;
+                            Marshal.StructureToPtr(msg, pMsg, false);
+                            ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                            Marshal.PtrToStructure(pMsg, msg);
+                        } while (ret != j2534.eError1.ERR_SUCCESS);
+
+                        do
+                        {
+                            numMsgs = 1;
+                            Marshal.StructureToPtr(msg, pMsg, false);
+                            ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                            Marshal.PtrToStructure(pMsg, msg);
+                        } while (ret != j2534.eError1.ERR_SUCCESS);
 
                         Buffer.BlockCopy(msg.Data, 5, data, byteCnt + rdBurst * LOG_DAT_SIZE, Math.Min(LOG_DAT_SIZE, length - (byteCnt + rdBurst * LOG_DAT_SIZE)));
                     }
