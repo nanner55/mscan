@@ -1,0 +1,1 @@
+sh-elf-as test.asm -o test.o
