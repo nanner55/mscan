@@ -36,6 +36,17 @@ namespace mscan
             LOG_LT = 0x89,
         }
 
+        enum eLogScratchType : Byte
+        {
+            // Big Endian
+            // <LOG_SCRATCH> <SCRATCH_TYPE 2B> <OFFSET 2B> <DATA 0x2CB> ... <CHECKSUM> <TRAILER>
+            SCRATCH_WRITE_9C00 = 0x00,
+            SCRATCH_READ_9C00 = 0x01,
+            SCRATCH_INFO = 0x02,
+            SCRATCH_WRITE = 0x04, // CNT is 0x00-0x2C Bytes, OFFSET is 2B and auto prefixed with FFFF
+            SCRATCH_READ = 0x05, // CNT is 0x01-0x100 (0x0 encoding=0x100), OFFSET is 4B
+        }
+
         struct sLogType
         {
             public Byte ReqHeader;
@@ -70,8 +81,7 @@ namespace mscan
                 mLength--;
                 return mData[mHead++];
             }
-            public void Enqueue(type[] data, int size = 0) {
-                if (size == 0) size = data.Length;
+            public void Enqueue(type[] data, int size) {
                 if (size > 0)
                 {
                     if (mLength + size > mData.Length) throw (new Exception("enqueue: overflow"));
@@ -191,9 +201,6 @@ namespace mscan
             j2534.eError1 ret;
             uint numMsgs = 1;
 
-            buttonConnect.Enabled = false;
-            buttonConnect.Update();
-
             // write logging cancel - NOTE: this hangs with a nonzero timeout
             msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
             msg.RxStatus = 0;
@@ -212,7 +219,7 @@ namespace mscan
                     // spam clears
                     numMsgs = 1;
                     ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                    if (ret != j2534.eError1.ERR_SUCCESS) break;
+                    //if (ret != j2534.eError1.ERR_SUCCESS) break;
                 }
             }
 
@@ -246,11 +253,14 @@ namespace mscan
 
             buttonConnect.Text = "Start";
             buttonConnect.Enabled = true;
+            buttonConnect.BackColor = System.Drawing.SystemColors.Control;
+            buttonConnect.Update();
             buttonLoadParam.Enabled = true;
             buttonLoadROM.Enabled = true;
             buttonReadROM.Enabled = true;
             textBoxDelay.Clear();
             dataGridViewParam.EditMode = DataGridViewEditMode.EditOnEnter;
+
 
             mDeviceId = uint.MaxValue;
             mChannelId = uint.MaxValue;
@@ -265,286 +275,302 @@ namespace mscan
             j2534.eError1 ret;
             uint numMsgs = 1;
 
-            buttonConnect.Enabled = false;
-            buttonConnect.Update();
-            buttonLoadParam.Enabled = true;
-            buttonLoadROM.Enabled = true;
-            buttonReadROM.Enabled = true;
-
-            j2534.init();
-
-            mDeviceId = uint.MaxValue;
-            ret = (j2534.eError1)j2534.PassThruOpen(IntPtr.Zero, ref mDeviceId);
-            textBoxConsole.AppendText("CONNECT> PassThruOpen" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruOpen: " + ret.ToString());
-
-            byte[] apiVersion = new byte[256], dllVersion = new byte[256], firmwareVersion = new byte[256];
-            textBoxConsole.AppendText("CONNECT> PassThruReadVersion" + Environment.NewLine);
-            ret = (j2534.eError1)j2534.PassThruReadVersion(apiVersion, dllVersion, firmwareVersion, mDeviceId);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruReadVersion: " + ret.ToString());
-            textBoxConsole.AppendText("CONNECT> APIVersion: " + System.Text.Encoding.ASCII.GetString(apiVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
-            textBoxConsole.AppendText("CONNECT> DLLVersion: " + System.Text.Encoding.ASCII.GetString(dllVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
-            textBoxConsole.AppendText("CONNECT> FWVersion: " + System.Text.Encoding.ASCII.GetString(firmwareVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
-
-            mChannelId = uint.MaxValue;
-            ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
-            textBoxConsole.AppendText("CONNECT> PassThruConnect" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
-
-            // clear all message filters
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
-
-            // setup timing config
-            j2534.SCONFIG cfg = new j2534.SCONFIG();
-            j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
-            IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
-            IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-            // provide time to send logging cancel write
-            cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
-            cfg.Value = 0x4; // res 0.5ms
-            cfgList.NumOfParams = 1;
-            cfgList.ConfigPtr = pCfg;
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            Marshal.StructureToPtr(cfgList, pCfgList, false);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            // FIXME: try to decrease timeouts to get smaller messages
-            cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
-            cfg.Value = 0x1; // res 0.5ms
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
-            cfg.Value = 0x1; // res 25ms
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            Marshal.FreeHGlobal(pCfg);
-            Marshal.FreeHGlobal(pCfgList);
-
-            // setup filter to pass all.  the response message format is some what arbitrary
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = 1;
-            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-            Marshal.StructureToPtr(msg, pMsg, false);
-            ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
-
-            // FIXME: hard code 24x2B for now
-            mLogMsgType = eLogMsgType.LOG_24x2B;
-
-            // empty out receive buffer
-            lock (mBuffer)
+            try
             {
-                mBuffer.Clear();
-                mLatency = 0;
-                //foreach (var l in mLatencyValues) l = 0;
-                Array.Clear(mLatencyValues, 0, mLatencyValues.Length);
-            }
+                buttonConnect.Enabled = false;
+                buttonConnect.Update();
+                buttonLoadParam.Enabled = true;
+                buttonLoadROM.Enabled = true;
+                buttonReadROM.Enabled = true;
+                buttonConnect.BackColor = Color.OrangeRed;
+                buttonConnect.Update();
 
-            if (mDeviceId != uint.MaxValue && mChannelId != uint.MaxValue)
+                j2534.init();
+
+                mDeviceId = uint.MaxValue;
+                ret = (j2534.eError1)j2534.PassThruOpen(IntPtr.Zero, ref mDeviceId);
+                textBoxConsole.AppendText("CONNECT> PassThruOpen" + Environment.NewLine);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruOpen: " + ret.ToString());
+
+                byte[] apiVersion = new byte[256], dllVersion = new byte[256], firmwareVersion = new byte[256];
+                textBoxConsole.AppendText("CONNECT> PassThruReadVersion" + Environment.NewLine);
+                ret = (j2534.eError1)j2534.PassThruReadVersion(apiVersion, dllVersion, firmwareVersion, mDeviceId);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruReadVersion: " + ret.ToString());
+                textBoxConsole.AppendText("CONNECT> APIVersion: " + System.Text.Encoding.ASCII.GetString(apiVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
+                textBoxConsole.AppendText("CONNECT> DLLVersion: " + System.Text.Encoding.ASCII.GetString(dllVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
+                textBoxConsole.AppendText("CONNECT> FWVersion: " + System.Text.Encoding.ASCII.GetString(firmwareVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
+
+                mChannelId = uint.MaxValue;
+                ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
+                textBoxConsole.AppendText("CONNECT> PassThruConnect" + Environment.NewLine);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
+
+                // clear all message filters
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
+
+                // setup timing config
+                j2534.SCONFIG cfg = new j2534.SCONFIG();
+                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
+                IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
+                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+                // provide time to send logging cancel write
+                cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
+                cfg.Value = 0x4; // res 0.5ms
+                cfgList.NumOfParams = 1;
+                cfgList.ConfigPtr = pCfg;
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                Marshal.StructureToPtr(cfgList, pCfgList, false);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                // FIXME: try to decrease timeouts to get smaller messages
+                cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
+                cfg.Value = 0x1; // res 0.5ms
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
+                cfg.Value = 0x1; // res 25ms
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                Marshal.FreeHGlobal(pCfg);
+                Marshal.FreeHGlobal(pCfgList);
+
+                // setup filter to pass all.  the response message format is some what arbitrary
+                msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                msg.RxStatus = 0;
+                msg.TxFlags = 0;
+                msg.Timestamp = 0;
+                msg.Timestamp = 0;
+                msg.ExtraDataIndex = 0;
+                msg.DataSize = 1;
+                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
+
+                // FIXME: hard code 24x2B for now
+                mLogMsgType = eLogMsgType.LOG_24x2B;
+
+                // empty out receive buffer
+                lock (mBuffer)
+                {
+                    mBuffer.Clear();
+                    mLatency = 0;
+                    //foreach (var l in mLatencyValues) l = 0;
+                    Array.Clear(mLatencyValues, 0, mLatencyValues.Length);
+                }
+
+                if (mDeviceId != uint.MaxValue && mChannelId != uint.MaxValue)
+                {
+                    mDequeueTimer = new HighPrecisionTimer.MultimediaTimer();
+                    mDequeueTimer.Interval = mLogMsgInfo[mLogMsgType].Rate;
+                    mDequeueTimer.Elapsed += HandleDequeue;
+                    mDequeueTimer.Start();
+
+                    mEnqueueTimer = new HighPrecisionTimer.MultimediaTimer();
+                    mEnqueueTimer.Interval = mLogMsgInfo[mLogMsgType].Rate;
+                    mEnqueueTimer.Elapsed += HandleEnqueue;
+                    mEnqueueTimer.Start();
+                }
+
+                // write log message
+                msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                msg.RxStatus = 0;
+                msg.TxFlags = 0;
+                msg.Timestamp = 0;
+                msg.ExtraDataIndex = 0;
+                msg.DataSize = LOG_MSG_SIZE;
+                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                // header
+                msg.Data[0x00] = mLogMsgInfo[mLogMsgType].ReqHeader;
+                // data based on params
+                for (int i = 0; i < MAX_PARAM; i++)
+                {
+                    var valueString = dataGridViewParam.Rows[i].Cells[1].Value?.ToString();
+                    UInt16 value = 0;
+                    try { value = Convert.ToUInt16(valueString, 16); } catch { }
+                    msg.Data[2 * i + 1] = (Byte)((value >> 0) & 0xFF);
+                    msg.Data[2 * i + 2] = (Byte)((value >> 8) & 0xFF);
+                }
+                // checksum
+                for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
+                // trailer
+                msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+
+                numMsgs = 1;
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                textBoxConsole.AppendText("CONNECT> PassThruWriteMsgs" + Environment.NewLine);
+                if (ret != 0 || numMsgs != 1) MessageBox.Show("PassThruWriteMsgs: " + ret.ToString() + ", " + numMsgs.ToString());
+            }
+            finally
             {
-                mDequeueTimer = new HighPrecisionTimer.MultimediaTimer();
-                mDequeueTimer.Interval = mLogMsgInfo[mLogMsgType].Rate;
-                mDequeueTimer.Elapsed += HandleDequeue;
-                mDequeueTimer.Start();
+                // NOTE: let timer thread read the message start
 
-                mEnqueueTimer = new HighPrecisionTimer.MultimediaTimer();
-                mEnqueueTimer.Interval = mLogMsgInfo[mLogMsgType].Rate;
-                mEnqueueTimer.Elapsed += HandleEnqueue;
-                mEnqueueTimer.Start();
+                if (mDeviceId != uint.MaxValue && mChannelId != uint.MaxValue)
+                {
+                    buttonConnect.Text = "Stop";
+                    buttonLoadParam.Enabled = false;
+                    buttonLoadROM.Enabled = false;
+                    buttonReadROM.Enabled = false;
+                    dataGridViewParam.EditMode = DataGridViewEditMode.EditProgrammatically;
+
+                    // let it read the buffer before supporting the disconnect - this can lead to double presses for some reason?
+                    //Thread.Sleep(1000);
+                }
+
+                buttonConnect.Enabled = true;
+
+                Marshal.FreeHGlobal(pMsg);
             }
-
-            // write log message
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = LOG_MSG_SIZE;
-            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-            // header
-            msg.Data[0x00] = mLogMsgInfo[mLogMsgType].ReqHeader;
-            // data based on params
-            for (int i = 0; i < MAX_PARAM; i++)
-            {
-                var valueString = dataGridViewParam.Rows[i].Cells[1].Value?.ToString();
-                UInt16 value = 0;
-                try { value = Convert.ToUInt16(valueString, 16); } catch { }
-                msg.Data[2 * i + 1] = (Byte)((value >> 0) & 0xFF);
-                msg.Data[2 * i + 2] = (Byte)((value >> 8) & 0xFF);
-            }
-            // checksum
-            for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
-            // trailer
-            msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
-
-            numMsgs = 1;
-            Marshal.StructureToPtr(msg, pMsg, false);
-            ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-            textBoxConsole.AppendText("CONNECT> PassThruWriteMsgs" + Environment.NewLine);
-            if (ret != 0 || numMsgs != 1) MessageBox.Show("PassThruWriteMsgs: " + ret.ToString() + ", " + numMsgs.ToString());
-
-            // NOTE: let timer thread read the message start
-
-            if (mDeviceId != uint.MaxValue && mChannelId != uint.MaxValue)
-            {
-                buttonConnect.Text = "Stop";
-                buttonLoadParam.Enabled = false;
-                buttonLoadROM.Enabled = false;
-                buttonReadROM.Enabled = false;
-                dataGridViewParam.EditMode = DataGridViewEditMode.EditProgrammatically;
-
-                // let it read the buffer before supporting the disconnect - this can lead to double presses for some reason?
-                //Thread.Sleep(1000);
-            }
-
-            buttonConnect.Enabled = true;
-
-            Marshal.FreeHGlobal(pMsg);
         }
 
         private void buttonReadROM_Click(object sender, EventArgs e)
         {
-            // try to read out the ROM
-
             j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
             IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
             j2534.eError1 ret;
-            uint numMsgs = 1;
 
-            j2534.init();
-
-            mDeviceId = uint.MaxValue;
-            ret = (j2534.eError1)j2534.PassThruOpen(IntPtr.Zero, ref mDeviceId);
-            textBoxConsole.AppendText("READROM> PassThruOpen" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruOpen: " + ret.ToString());
-
-            mChannelId = uint.MaxValue;
-            ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
-            textBoxConsole.AppendText("READROM> PassThruConnect" + Environment.NewLine);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
-
-            // clear all message filters
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
-
-            // setup timing config
-            j2534.SCONFIG cfg = new j2534.SCONFIG();
-            j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
-            IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
-            IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-            // provide time to send logging cancel write
-            cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
-            cfg.Value = 0x4; // res 0.5ms
-            cfgList.NumOfParams = 1;
-            cfgList.ConfigPtr = pCfg;
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            Marshal.StructureToPtr(cfgList, pCfgList, false);
-            ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            // FIXME: try to decrease timeouts to get smaller messages
-            cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
-            cfg.Value = 0x1; // res 0.5ms
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
-            cfg.Value = 0x1; // res 25ms
-            Marshal.StructureToPtr(cfg, pCfg, false);
-            //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-            Marshal.FreeHGlobal(pCfg);
-            Marshal.FreeHGlobal(pCfgList);
-
-            // setup filter to pass all.  the response message format is some what arbitrary
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = 1;
-            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-            Marshal.StructureToPtr(msg, pMsg, false);
-            ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
-
-            mROMFile = new Byte[0x80000];
-
-            progressBarReadROM.Value = 0;
-            Buffer.BlockCopy(DMAReadAddress(0xE00, 0x200), 0, mROMFile, 0xE00, 0x200);
-
-            // read out ROM ID from file
-            uint romId = ((uint)mROMFile[0xF52] << 24) | ((uint)mROMFile[0xF53] << 16) | ((uint)mROMFile[0xF54] << 8) | ((uint)mROMFile[0xF55] << 0);
-            string romIdName = Convert.ToString(romId, 16);
-
-            LoadMetadataDirectory(Environment.CurrentDirectory + "/metadata");
-
-            LoadMetadata(romIdName);
-
-            LoadTables();
-
-            // loop through tables and preload them
-            lock (dataGridViewTable)
+            try
             {
-                progressBarReadROM.Value = 100 / (comboBox2.Items.Count + 1);
+                buttonReadROM.BackColor = Color.OrangeRed;
+                buttonReadROM.Update();
 
-                int cnt = 3;
-                foreach (var item in comboBox2.Items)
+                j2534.init();
+
+                mDeviceId = uint.MaxValue;
+                ret = (j2534.eError1)j2534.PassThruOpen(IntPtr.Zero, ref mDeviceId);
+                textBoxConsole.AppendText("READROM> PassThruOpen" + Environment.NewLine);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruOpen: " + ret.ToString());
+
+                mChannelId = uint.MaxValue;
+                ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
+                textBoxConsole.AppendText("READROM> PassThruConnect" + Environment.NewLine);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
+
+                // clear all message filters
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
+
+                // setup timing config
+                j2534.SCONFIG cfg = new j2534.SCONFIG();
+                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
+                IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
+                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+                // provide time to send logging cancel write
+                cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
+                cfg.Value = 0x4; // res 0.5ms
+                cfgList.NumOfParams = 1;
+                cfgList.ConfigPtr = pCfg;
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                Marshal.StructureToPtr(cfgList, pCfgList, false);
+                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                // FIXME: try to decrease timeouts to get smaller messages
+                cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
+                cfg.Value = 0x1; // res 0.5ms
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
+                cfg.Value = 0x1; // res 25ms
+                Marshal.StructureToPtr(cfg, pCfg, false);
+                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+                Marshal.FreeHGlobal(pCfg);
+                Marshal.FreeHGlobal(pCfgList);
+
+                // setup filter to pass all.  the response message format is some what arbitrary
+                msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                msg.RxStatus = 0;
+                msg.TxFlags = 0;
+                msg.Timestamp = 0;
+                msg.ExtraDataIndex = 0;
+                msg.DataSize = 1;
+                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
+
+                mROMFile = new Byte[0x80000];
+
+                textBoxConsole.AppendText("READROM> Base: 000-FFF ..." + Environment.NewLine);
+                Buffer.BlockCopy(DMAReadAddress(0x0, 0x1000), 0, mROMFile, 0x0, 0x1000);
+
+                // read out ROM ID from file
+                uint romId = ((uint)mROMFile[0xF52] << 24) | ((uint)mROMFile[0xF53] << 16) | ((uint)mROMFile[0xF54] << 8) | ((uint)mROMFile[0xF55] << 0);
+                string romIdName = Convert.ToString(romId, 16);
+
+                LoadMetadataDirectory(Environment.CurrentDirectory + "/metadata");
+
+                LoadMetadata(romIdName);
+
+                LoadTables();
+
+                // loop through tables and preload them
+                lock (dataGridViewTable)
                 {
-                    var tableName = item.ToString();
+                    int cnt = 3;
+                    int totalProgressCnt = (comboBox2.Items.Count + 1) * 3;
+                    progressBarReadROM.Value = cnt * 100 / totalProgressCnt;
 
-                    foreach (XmlNode tableNode in mMetadataXml.SelectNodes("/rom/table"))
+                    foreach (var item in comboBox2.Items)
                     {
-                        if (tableNode.Attributes["name"].InnerText == tableName)
+                        var tableName = item.ToString();
+
+                        foreach (XmlNode tableNode in mMetadataXml.SelectNodes("/rom/table"))
                         {
-                            // TODO: support 1D, 2D, 3D tables
-                            string category;
-                            int tableAddress, loadAddress, loadElem, rpmAddress, rpmElem;
-
-                            textBoxConsole.AppendText("READROM> Table: " + tableName + " ..." + Environment.NewLine);
-
-                            try
+                            if (tableNode.Attributes["name"].InnerText == tableName)
                             {
-                                category = tableNode.Attributes["category"].InnerText;
-                                tableAddress = Convert.ToInt32(tableNode.Attributes["address"].InnerText, 16);
-                                loadAddress = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["address"].InnerText, 16);
-                                loadElem = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["elements"].InnerText);
-                                rpmAddress = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["address"].InnerText, 16);
-                                rpmElem = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["elements"].InnerText);
+                                // TODO: support 1D, 2D, 3D tables
+                                string category;
+                                int tableAddress, loadAddress, loadElem, rpmAddress, rpmElem;
 
-                                Buffer.BlockCopy(DMAReadAddress(tableAddress, loadElem * rpmElem), 0, mROMFile, tableAddress, loadElem * rpmElem);
-                                progressBarReadROM.Value = ++cnt * 100 / (comboBox2.Items.Count + 1) / 3;
-                                Buffer.BlockCopy(DMAReadAddress(loadAddress, 2 * loadElem), 0, mROMFile, loadAddress, 2 * loadElem);
-                                progressBarReadROM.Value = ++cnt * 100 / (comboBox2.Items.Count + 1) / 3;
-                                Buffer.BlockCopy(DMAReadAddress(rpmAddress, 2 * rpmElem), 0, mROMFile, rpmAddress, 2 * rpmElem);
-                                progressBarReadROM.Value = ++cnt * 100 / (comboBox2.Items.Count + 1) / 3;
-                            }
-                            catch
-                            {
-                                cnt += 3;
-                                progressBarReadROM.Value = cnt * 100 / (comboBox2.Items.Count + 1) / 3;
+                                textBoxConsole.AppendText("READROM> Table: " + tableName + " ..." + Environment.NewLine);
+
+                                try
+                                {
+                                    category = tableNode.Attributes["category"].InnerText;
+                                    tableAddress = Convert.ToInt32(tableNode.Attributes["address"].InnerText, 16);
+                                    loadAddress = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["address"].InnerText, 16);
+                                    loadElem = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["elements"].InnerText);
+                                    rpmAddress = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["address"].InnerText, 16);
+                                    rpmElem = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["elements"].InnerText);
+
+                                    Buffer.BlockCopy(DMAReadAddress(tableAddress, loadElem * rpmElem), 0, mROMFile, tableAddress, loadElem * rpmElem);
+                                    progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
+                                    Buffer.BlockCopy(DMAReadAddress(loadAddress, 2 * loadElem), 0, mROMFile, loadAddress, 2 * loadElem);
+                                    progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
+                                    Buffer.BlockCopy(DMAReadAddress(rpmAddress, 2 * rpmElem), 0, mROMFile, rpmAddress, 2 * rpmElem);
+                                    progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
+                                }
+                                catch
+                                {
+                                    cnt += 3;
+                                    progressBarReadROM.Value = cnt * 100 / totalProgressCnt;
+                                }
                             }
                         }
                     }
                 }
+
+                comboBox2.SelectedIndex = 0;
             }
+            finally
+            {
+                // disconnect
+                ret = (j2534.eError1)j2534.PassThruDisconnect(mChannelId);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruDisconnect: " + ret.ToString());
+                ret = (j2534.eError1)j2534.PassThruClose(mDeviceId);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruClose: " + ret.ToString());
 
-            comboBox2.SelectedIndex = 0;
+                mDeviceId = uint.MaxValue;
+                mChannelId = uint.MaxValue;
 
-            // disconnect
-            ret = (j2534.eError1)j2534.PassThruDisconnect(mChannelId);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruDisconnect: " + ret.ToString());
-            ret = (j2534.eError1)j2534.PassThruClose(mDeviceId);
-            if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruClose: " + ret.ToString());
+                buttonReadROM.BackColor = System.Drawing.SystemColors.Control;
+                buttonReadROM.Update();
 
-            mDeviceId = uint.MaxValue;
-            mChannelId = uint.MaxValue;
-
-            Marshal.FreeHGlobal(pMsg);
+                Marshal.FreeHGlobal(pMsg);
+            }
         }
 
         Byte[] DMAReadAddress(int address, int length)
@@ -556,78 +582,72 @@ namespace mscan
                 data = new byte[length];
 
                 j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
-                IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+                IntPtr pMsg = Marshal.AllocHGlobal(2 * Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
                 j2534.eError1 ret;
                 uint numMsgs = 1;
 
-                const int BURST_LENGTH = 1;
+                CircularBuffer<Byte> readBuffer = new CircularBuffer<Byte>((int)LOG_MSG_SIZE * 0x100);
 
-                for (int byteCnt = 0; byteCnt < length; byteCnt += LOG_DAT_SIZE * BURST_LENGTH)
+                for (int byteCnt = 0; byteCnt < length; byteCnt += LOG_DAT_SIZE * 0x100)
                 {
 
-                    for (int wrBurst = 0; byteCnt + wrBurst * LOG_DAT_SIZE < length && wrBurst < BURST_LENGTH; wrBurst++)
+                    msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                    msg.RxStatus = 0;
+                    msg.TxFlags = 0;
+                    msg.Timestamp = 0;
+                    msg.ExtraDataIndex = 0;
+                    msg.DataSize = LOG_MSG_SIZE;
+                    for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                    int offset = address + byteCnt;
+                    int pktCnt = Math.Min(0x100, (length - byteCnt + LOG_DAT_SIZE - 1) / LOG_DAT_SIZE);
+
+                    msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
+                    msg.Data[0x01] = (Byte)(pktCnt & 0xFF); // number of packets
+                    msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_READ;
+                    msg.Data[0x03] = (Byte)((offset >> 24) & 0xFF);
+                    msg.Data[0x04] = (Byte)((offset >> 16) & 0xFF);
+                    msg.Data[0x05] = (Byte)((offset >> 8) & 0xFF);
+                    msg.Data[0x06] = (Byte)((offset >> 0) & 0xFF);
+
+                    // checksum
+                    for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
+                    // trailer
+                    msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+
+                    do
                     {
-                        msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-                        msg.RxStatus = 0;
-                        msg.TxFlags = 0;
-                        msg.Timestamp = 0;
-                        msg.ExtraDataIndex = 0;
-                        msg.DataSize = LOG_MSG_SIZE;
-                        for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+                        numMsgs = 1;
+                        Marshal.StructureToPtr(msg, pMsg, false);
+                        ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                    } while (ret != j2534.eError1.ERR_SUCCESS);
 
-                        int offset = address + byteCnt + wrBurst * LOG_DAT_SIZE;
+                    // get response
+                    msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                    msg.RxStatus = 0;
+                    msg.TxFlags = 0;
+                    msg.Timestamp = 0;
+                    msg.ExtraDataIndex = 0;
+                    msg.DataSize = 0;
 
-                        // header
-                        msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
-                        // data
-                        msg.Data[0x01] = 0x00; // read
-                        msg.Data[0x02] = 0x05; // read
-                        msg.Data[0x03] = (Byte)((offset >> 24) & 0xFF);
-                        msg.Data[0x04] = (Byte)((offset >> 16) & 0xFF);
-                        msg.Data[0x05] = (Byte)((offset >> 8) & 0xFF);
-                        msg.Data[0x06] = (Byte)((offset >> 0) & 0xFF);
-
-                        // checksum
-                        for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
-                        // trailer
-                        msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
-
-                        do
-                        {
-                            numMsgs = 1;
-                            Marshal.StructureToPtr(msg, pMsg, false);
-                            ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                        } while (ret != j2534.eError1.ERR_SUCCESS);
+                    while (readBuffer.Length != pktCnt * LOG_MSG_SIZE)
+                    {
+                        numMsgs = 1;
+                        Marshal.StructureToPtr(msg, pMsg, false);
+                        ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                        Marshal.PtrToStructure(pMsg, msg);
+                        if (ret == j2534.eError1.ERR_SUCCESS) readBuffer.Enqueue(msg.Data, (int)msg.DataSize);
                     }
 
-                    for (int rdBurst = 0; byteCnt + rdBurst * LOG_DAT_SIZE < length && rdBurst < BURST_LENGTH; rdBurst++)
+                    int readByteCnt = 0;
+                    while (readBuffer.Length != 0)
                     {
-                        // get response
-                        msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-                        msg.RxStatus = 0;
-                        msg.TxFlags = 0;
-                        msg.Timestamp = 0;
-                        msg.ExtraDataIndex = 0;
-                        msg.DataSize = 0;
-
-                        do
-                        {
-                            numMsgs = 1;
-                            Marshal.StructureToPtr(msg, pMsg, false);
-                            ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                            Marshal.PtrToStructure(pMsg, msg);
-                        } while (ret != j2534.eError1.ERR_SUCCESS);
-
-                        do
-                        {
-                            numMsgs = 1;
-                            Marshal.StructureToPtr(msg, pMsg, false);
-                            ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                            Marshal.PtrToStructure(pMsg, msg);
-                        } while (ret != j2534.eError1.ERR_SUCCESS);
-
-                        Buffer.BlockCopy(msg.Data, 5, data, byteCnt + rdBurst * LOG_DAT_SIZE, Math.Min(LOG_DAT_SIZE, length - (byteCnt + rdBurst * LOG_DAT_SIZE)));
+                        // copy partial packet
+                        var msgData = readBuffer.Dequeue((int)LOG_MSG_SIZE);
+                        Buffer.BlockCopy(msgData, 5, data, byteCnt + readByteCnt, Math.Min(LOG_DAT_SIZE, length - (byteCnt + readByteCnt)));
+                        readByteCnt += LOG_DAT_SIZE;
                     }
+
                 }
 
                 Marshal.FreeHGlobal(pMsg);
