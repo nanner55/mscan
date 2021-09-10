@@ -365,7 +365,7 @@ namespace mscan
         ////////////////
 
         [StructLayout(LayoutKind.Sequential)]
-        public class SCONFIG
+        public struct SCONFIG
         {
             public uint Parameter;
             public uint Value;

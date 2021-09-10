@@ -455,27 +455,23 @@ namespace mscan
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
 
                 // setup timing config
-                j2534.SCONFIG cfg = new j2534.SCONFIG();
-                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
-                IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
-                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-                // provide time to send logging cancel write
-                cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
-                cfg.Value = 0x4; // res 0.5ms
-                cfgList.NumOfParams = 1;
-                cfgList.ConfigPtr = pCfg;
-                Marshal.StructureToPtr(cfg, pCfg, false);
+                j2534.SCONFIG[] cffg= new []{
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P3_MIN,Value=0x4 }, // res 0.5ms
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MIN,Value=0x1 }, // res 0.5ms    // FIXME: try to decrease timeouts to get smaller messages
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MAX,Value=0x1 }, // res 25ms  // provide time to send logging cancel write
+        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
+        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
+                };
+                IntPtr pCfg = Marshal.AllocHGlobal( cffg.Length * Marshal.SizeOf(typeof(j2534.SCONFIG) ) );
+                Marshal.StructureToPtr(cffg, pCfg, false);
+                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST
+                {
+                    NumOfParams = (uint)cffg.Length,
+                    ConfigPtr = pCfg
+                };
+                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG_LIST)));
                 Marshal.StructureToPtr(cfgList, pCfgList, false);
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                // FIXME: try to decrease timeouts to get smaller messages
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
-                cfg.Value = 0x1; // res 0.5ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
-                cfg.Value = 0x1; // res 25ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
                 Marshal.FreeHGlobal(pCfg);
                 Marshal.FreeHGlobal(pCfgList);
 
