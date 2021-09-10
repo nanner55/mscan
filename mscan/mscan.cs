@@ -471,8 +471,8 @@ namespace mscan
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
 
-                //ret = setConfig();   //not need, set in Connect()
-                //ret = setFilter();    //not need, set in Connect()
+                ret = setConfig();   //not need, set in Connect()
+                ret = setFilter();    //not need, set in Connect()
 
 
                 mROMFile = new Byte[0x80000];
