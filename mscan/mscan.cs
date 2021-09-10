@@ -71,17 +71,20 @@ namespace mscan
         {
             public CircularBuffer(int size) { mData = new type[size]; mHead = 0; mTail = 0; mLength = 0; }
 
-            public void Enqueue(type elem) {
+            public void Enqueue(type elem)
+            {
                 if (Length == mData.Length) throw (new Exception("enqueue: overflow"));
                 mData[mTail++] = elem;
                 mLength++;
             }
-            public type Dequeue() {
+            public type Dequeue()
+            {
                 if (mLength == 0) throw (new Exception("dequeue: underflow"));
                 mLength--;
                 return mData[mHead++];
             }
-            public void Enqueue(type[] data, int size) {
+            public void Enqueue(type[] data, int size)
+            {
                 if (size > 0)
                 {
                     if (mLength + size > mData.Length) throw (new Exception("enqueue: overflow"));
@@ -143,7 +146,8 @@ namespace mscan
         // Params
         XmlDocument mParamXml = null;
         DataTable mDataTable = new DataTable();
-        struct sParamInfo {
+        struct sParamInfo
+        {
             public string mDisplayName;
             public string mLogName;
             public string mRequestId;
@@ -311,42 +315,10 @@ namespace mscan
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
 
                 // setup timing config
-                j2534.SCONFIG cfg = new j2534.SCONFIG();
-                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
-                IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
-                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-                // provide time to send logging cancel write
-                cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
-                cfg.Value = 0x4; // res 0.5ms
-                cfgList.NumOfParams = 1;
-                cfgList.ConfigPtr = pCfg;
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                Marshal.StructureToPtr(cfgList, pCfgList, false);
-                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                // FIXME: try to decrease timeouts to get smaller messages
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
-                cfg.Value = 0x1; // res 0.5ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
-                cfg.Value = 0x1; // res 25ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                Marshal.FreeHGlobal(pCfg);
-                Marshal.FreeHGlobal(pCfgList);
+                setConfig();
 
-                // setup filter to pass all.  the response message format is some what arbitrary
-                msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-                msg.RxStatus = 0;
-                msg.TxFlags = 0;
-                msg.Timestamp = 0;
-                msg.Timestamp = 0;
-                msg.ExtraDataIndex = 0;
-                msg.DataSize = 1;
-                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
+                // setup filter to pass all.  the response message format is some what arbitrary                
+                ret = setFilter();
 
                 // FIXME: hard code 24x2B for now
                 mLogMsgType = eLogMsgType.LOG_24x2B;
@@ -425,11 +397,56 @@ namespace mscan
                 Marshal.FreeHGlobal(pMsg);
             }
         }
-
-        private void buttonReadROM_Click(object sender, EventArgs e)
+        
+        private j2534.eError1 setConfig()
+        {
+            // setup timing config
+            j2534.SCONFIG[] cffg = new[]{
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P3_MIN,Value=0x4 }, // res 0.5ms
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MIN,Value=0x1 }, // res 0.5ms    // FIXME: try to decrease timeouts to get smaller messages
+                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MAX,Value=0x1 }, // res 25ms  // provide time to send logging cancel write
+        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
+        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
+                };
+            IntPtr pCfg = Marshal.AllocHGlobal(cffg.Length * Marshal.SizeOf(typeof(j2534.SCONFIG)));
+            Marshal.StructureToPtr(cffg, pCfg, false);
+            j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST
+            {
+                NumOfParams = (uint)cffg.Length,
+                ConfigPtr = pCfg
+            };
+            IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG_LIST)));
+            Marshal.StructureToPtr(cfgList, pCfgList, false);
+            j2534.eError1 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
+            Marshal.FreeHGlobal(pCfg);
+            Marshal.FreeHGlobal(pCfgList);
+            return ret;
+        }
+        
+        private j2534.eError1 setFilter()
         {
             j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
             IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+            // setup filter to pass all.  the response message format is some what arbitrary
+            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                msg.RxStatus = 0;
+                msg.TxFlags = 0;
+                msg.Timestamp = 0;
+                msg.ExtraDataIndex = 0;
+                msg.DataSize = 1;
+                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                Marshal.StructureToPtr(msg, pMsg, false);
+            j2534.eError1 ret =(j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
+
+            Marshal.FreeHGlobal(pMsg);
+            return ret;
+        }
+
+        private void buttonReadROM_Click(object sender, EventArgs e)
+        {
+            //j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
+            //IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
             j2534.eError1 ret;
 
             try
@@ -454,38 +471,9 @@ namespace mscan
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
 
-                // setup timing config
-                j2534.SCONFIG[] cffg= new []{
-                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P3_MIN,Value=0x4 }, // res 0.5ms
-                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MIN,Value=0x1 }, // res 0.5ms    // FIXME: try to decrease timeouts to get smaller messages
-                    new j2534.SCONFIG{ Parameter=(uint)j2534.eConfig1.P2_MAX,Value=0x1 }, // res 25ms  // provide time to send logging cancel write
-        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
-        //            new j2534.SCONFIG{ Parameter=0,Value=0 },
-                };
-                IntPtr pCfg = Marshal.AllocHGlobal( cffg.Length * Marshal.SizeOf(typeof(j2534.SCONFIG) ) );
-                Marshal.StructureToPtr(cffg, pCfg, false);
-                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST
-                {
-                    NumOfParams = (uint)cffg.Length,
-                    ConfigPtr = pCfg
-                };
-                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG_LIST)));
-                Marshal.StructureToPtr(cfgList, pCfgList, false);
-                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                Marshal.FreeHGlobal(pCfg);
-                Marshal.FreeHGlobal(pCfgList);
+                //ret = setConfig();   //not need, set in Connect()
+                //ret = setFilter();    //not need, set in Connect()
 
-                // setup filter to pass all.  the response message format is some what arbitrary
-                msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-                msg.RxStatus = 0;
-                msg.TxFlags = 0;
-                msg.Timestamp = 0;
-                msg.ExtraDataIndex = 0;
-                msg.DataSize = 1;
-                for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
 
                 mROMFile = new Byte[0x80000];
 
@@ -565,7 +553,7 @@ namespace mscan
                 buttonReadROM.BackColor = System.Drawing.SystemColors.Control;
                 buttonReadROM.Update();
 
-                Marshal.FreeHGlobal(pMsg);
+             //   Marshal.FreeHGlobal(pMsg);
             }
         }
 
@@ -654,6 +642,7 @@ namespace mscan
 
         j2534.PASSTHRU_MSG rmsg = new j2534.PASSTHRU_MSG();
         IntPtr rpMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+        
         void HandleEnqueue(object sender, EventArgs e)
         {
             // try to read data from serial
@@ -1006,7 +995,7 @@ namespace mscan
 
         private void buttonOpenROM_Click(object sender, EventArgs e)
         {
-            OpenFileDialog fd = new OpenFileDialog { Filter = "rom files (*.bin,*.hex,*.srf)|*.bin;*.hex;*.srf|all files (*.*)|*.*", Title = "Load ROM"  };
+            OpenFileDialog fd = new OpenFileDialog { Filter = "rom files (*.bin,*.hex,*.srf)|*.bin;*.hex;*.srf|all files (*.*)|*.*", Title = "Load ROM" };
 
             if (fd.ShowDialog() == DialogResult.OK)
             {
@@ -1144,7 +1133,7 @@ namespace mscan
             comboBox2.Items.Clear();
             foreach (XmlNode tableNode in mMetadataXml.SelectNodes("/rom/table"))
             {
-                if (   tableNode.ChildNodes.Count == 2
+                if (tableNode.ChildNodes.Count == 2
                     && tableNode.ChildNodes[0].Attributes["name"].InnerText.Contains("Load")
                     && tableNode.ChildNodes[1].Attributes["name"].InnerText.Contains("RPM")
                     )
@@ -1153,7 +1142,8 @@ namespace mscan
                 }
             }
 
-            foreach (var tableItem in comboBox2.Items) {
+            foreach (var tableItem in comboBox2.Items)
+            {
                 var width = Convert.ToInt32(comboBox2.CreateGraphics().MeasureString(tableItem.ToString(), comboBox2.Font).Width);
                 comboBox2.DropDownWidth = Math.Max(comboBox2.DropDownWidth, width);
             }
