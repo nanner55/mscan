@@ -304,10 +304,6 @@ namespace mscan
                 textBoxConsole.AppendText("CONNECT> DLLVersion: " + System.Text.Encoding.ASCII.GetString(dllVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
                 textBoxConsole.AppendText("CONNECT> FWVersion: " + System.Text.Encoding.ASCII.GetString(firmwareVersion).TrimEnd(new char[] { '\0' }) + Environment.NewLine);
 
-                mChannelId = uint.MaxValue;
-                ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
-                textBoxConsole.AppendText("CONNECT> PassThruConnect" + Environment.NewLine);
-                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
 
                 // clear all message filters
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_MSG_FILTERS, IntPtr.Zero, IntPtr.Zero);
@@ -319,6 +315,18 @@ namespace mscan
 
                 // setup filter to pass all.  the response message format is some what arbitrary                
                 ret = setFilter();
+
+
+
+
+                //connect must be after setup's
+                mChannelId = uint.MaxValue;
+                ret = (j2534.eError1)j2534.PassThruConnect(mDeviceId, (uint)j2534.eProtocol1.ISO9141, (uint)(j2534.eConnect.ISO9141_K_LINE_ONLY | j2534.eConnect.ISO9141_NO_CHECKSUM), 62500, ref mChannelId);
+                textBoxConsole.AppendText("CONNECT> PassThruConnect" + Environment.NewLine);
+                if (ret != j2534.eError1.ERR_SUCCESS) MessageBox.Show("PassThruConnect: " + ret.ToString());
+
+
+
 
                 // FIXME: hard code 24x2B for now
                 mLogMsgType = eLogMsgType.LOG_24x2B;
