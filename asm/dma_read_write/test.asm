@@ -8,7 +8,7 @@ dma_enable: .byte 0x3
 
 .ORG 0x9130
 ! handle mode 87, compress out checks
-! support packet counts 0x00->0x100 * 0x2C
+! support packet counts 0x01->0x100 * 0x2C
 mov     r0, r9
 mov.w   @(0x10, r14), r0
 tst     #0x40, r0
@@ -47,7 +47,8 @@ mov     r10, r8
 
 ! Reads
 .ORG 0x919A
-mov     #1, r0
+mov.l   RAM_DMA_RX_BUF, r10
+mov.w   @(2,r10), r0
 mov.w   r0, @(2,r2)
 extu.w  r8, r0
 mov.b   r0, @(5,r2)
@@ -59,7 +60,6 @@ mov     r2, r5
 add     #6, r5
 mov.l   RAM_DMA_MODE87_BUFFER, r4
 add     r8, r4
-mov.l   RAM_DMA_RX_BUF, r10
 mov.b   @(3,r10), r0
 tst     #4, r0
 bt      memcpy_read_tgt:
