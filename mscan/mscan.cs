@@ -39,7 +39,7 @@ namespace mscan
         enum eLogScratchType : Byte
         {
             // Big Endian
-            // <LOG_SCRATCH> <SCRATCH_TYPE 2B> <OFFSET 2B> <DATA 0x2CB> ... <CHECKSUM> <TRAILER>
+            // <LOG_SCRATCH> <CNT 0B/1B + SCRATCH_TYPE 2B/1B> <OFFSET 2B> <DATA 0x2CB> ... <CHECKSUM> <TRAILER>
             SCRATCH_WRITE_9C00 = 0x00,
             SCRATCH_READ_9C00 = 0x01,
             SCRATCH_INFO = 0x02,
@@ -356,7 +356,6 @@ namespace mscan
                 {
                     mBuffer.Clear();
                     mLatency = 0;
-                    //foreach (var l in mLatencyValues) l = 0;
                     Array.Clear(mLatencyValues, 0, mLatencyValues.Length);
                 }
 
@@ -454,31 +453,6 @@ namespace mscan
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_RX_BUFFER, IntPtr.Zero, IntPtr.Zero);
                 ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.CLEAR_TX_BUFFER, IntPtr.Zero, IntPtr.Zero);
 
-                // setup timing config
-                j2534.SCONFIG cfg = new j2534.SCONFIG();
-                j2534.SCONFIG_LIST cfgList = new j2534.SCONFIG_LIST();
-                IntPtr pCfg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.SCONFIG)));
-                IntPtr pCfgList = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-                // provide time to send logging cancel write
-                cfg.Parameter = (uint)j2534.eConfig1.P3_MIN;
-                cfg.Value = 0x4; // res 0.5ms
-                cfgList.NumOfParams = 1;
-                cfgList.ConfigPtr = pCfg;
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                Marshal.StructureToPtr(cfgList, pCfgList, false);
-                ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                // FIXME: try to decrease timeouts to get smaller messages
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MIN;
-                cfg.Value = 0x1; // res 0.5ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                cfg.Parameter = (uint)j2534.eConfig1.P2_MAX;
-                cfg.Value = 0x1; // res 25ms
-                Marshal.StructureToPtr(cfg, pCfg, false);
-                //ret = (j2534.eError1)j2534.PassThruIoctl(mChannelId, (uint)j2534.eIoctl1.SET_CONFIG, pCfgList, IntPtr.Zero);
-                Marshal.FreeHGlobal(pCfg);
-                Marshal.FreeHGlobal(pCfgList);
-
                 // setup filter to pass all.  the response message format is some what arbitrary
                 msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
                 msg.RxStatus = 0;
@@ -490,6 +464,8 @@ namespace mscan
 
                 Marshal.StructureToPtr(msg, pMsg, false);
                 ret = (j2534.eError1)j2534.PassThruStartMsgFilter(mChannelId, (uint)j2534.eFilter.PASS_FILTER, pMsg, pMsg, IntPtr.Zero, ref mFilterId);
+
+                //Test();
 
                 mROMFile = new Byte[0x80000];
 
@@ -582,7 +558,7 @@ namespace mscan
                 data = new byte[length];
 
                 j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
-                IntPtr pMsg = Marshal.AllocHGlobal(2 * Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+                IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
                 j2534.eError1 ret;
                 uint numMsgs = 1;
 
@@ -656,24 +632,127 @@ namespace mscan
             return data;
         }
 
+        void Test()
+        {
+            j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
+            IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+            j2534.eError1 ret;
+            uint numMsgs = 1;
+
+            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+            msg.RxStatus = 0;
+            msg.TxFlags = 0;
+            msg.Timestamp = 0;
+            msg.ExtraDataIndex = 0;
+            msg.DataSize = LOG_MSG_SIZE;
+            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+            uint offset = 0x9C00;
+
+            msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
+            msg.Data[0x01] = (Byte)3;
+            msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_WRITE;
+            msg.Data[0x03] = (Byte)((offset >> 8) & 0xFF);
+            msg.Data[0x04] = (Byte)((offset >> 0) & 0xFF);
+            msg.Data[0x05] = 0x2;
+            msg.Data[0x06] = 0x1;
+            msg.Data[0x07] = 0x3;
+
+            // checksum
+            for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
+            // trailer
+            msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+
+            do
+            {
+                numMsgs = 1;
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+            } while (ret != j2534.eError1.ERR_SUCCESS);
+
+            // get response
+            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+            msg.RxStatus = 0;
+            msg.TxFlags = 0;
+            msg.Timestamp = 0;
+            msg.ExtraDataIndex = 0;
+            msg.DataSize = 0;
+
+            do
+            {
+                numMsgs = 1;
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                Marshal.PtrToStructure(pMsg, msg);
+            } while (ret != j2534.eError1.ERR_BUFFER_EMPTY);
+
+            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+            msg.RxStatus = 0;
+            msg.TxFlags = 0;
+            msg.Timestamp = 0;
+            msg.ExtraDataIndex = 0;
+            msg.DataSize = LOG_MSG_SIZE;
+            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+            offset = 0xFFFF9C00;
+
+            msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
+            msg.Data[0x01] = (Byte)1;
+            msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_READ;
+            msg.Data[0x03] = (Byte)((offset >> 24) & 0xFF);
+            msg.Data[0x04] = (Byte)((offset >> 16) & 0xFF);
+            msg.Data[0x05] = (Byte)((offset >> 8) & 0xFF);
+            msg.Data[0x06] = (Byte)((offset >> 0) & 0xFF);
+            // checksum
+            for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
+            // trailer
+            msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+
+            do
+            {
+                numMsgs = 1;
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+            } while (ret != j2534.eError1.ERR_SUCCESS);
+
+            // get response
+            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+            msg.RxStatus = 0;
+            msg.TxFlags = 0;
+            msg.Timestamp = 0;
+            msg.ExtraDataIndex = 0;
+            msg.DataSize = 0;
+
+            do
+            {
+                numMsgs = 1;
+                Marshal.StructureToPtr(msg, pMsg, false);
+                ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                Marshal.PtrToStructure(pMsg, msg);
+            } while (ret != j2534.eError1.ERR_BUFFER_EMPTY);
+
+            Marshal.FreeHGlobal(pMsg);
+        }
+
         j2534.PASSTHRU_MSG rmsg = new j2534.PASSTHRU_MSG();
         IntPtr rpMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
         void HandleEnqueue(object sender, EventArgs e)
         {
-            // try to read data from serial
-            rmsg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            rmsg.RxStatus = 0;
-            rmsg.TxFlags = 0;
-            rmsg.Timestamp = 0;
-            rmsg.ExtraDataIndex = 0;
-            rmsg.DataSize = 0;
-
-            uint numMsgs = 1;
-            Marshal.StructureToPtr(rmsg, rpMsg, false);
 
             // need to lock buffer for read since we only have one msg data structure and PassThruReadMsgs probably not thread safe
             lock (mBuffer)
             {
+                // try to read data from serial
+                rmsg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                rmsg.RxStatus = 0;
+                rmsg.TxFlags = 0;
+                rmsg.Timestamp = 0;
+                rmsg.ExtraDataIndex = 0;
+                rmsg.DataSize = 0;
+
+                uint numMsgs = 1;
+                Marshal.StructureToPtr(rmsg, rpMsg, false);
+
                 // FIXME: why does it buffer 0xFE0 worth of data?
                 var ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, rpMsg, ref numMsgs, 0);
                 Marshal.PtrToStructure(rpMsg, rmsg);
@@ -687,6 +766,7 @@ namespace mscan
                     MessageBox.Show("read: " + x.ToString());
                 }
             }
+
         }
 
         void HandleDequeue(object sender, EventArgs e)

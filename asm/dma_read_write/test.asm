@@ -22,8 +22,8 @@ check_new:
 bt      skip:
 mov.l   RAM_DMA_RX_BUF, r10
 mov.b   @(3, r10), r0
-tst     #0x4, r0
-bt      skip:
+cmp/eq  #0x5, r0
+bf      skip:
 mov.b   @(2, r10), r0
 dt      r0
 mov.b   r0, @(2, r10)
