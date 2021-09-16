@@ -81,7 +81,6 @@ cmp/eq  #2, r0
 bf      copy_rx_to_tx:
 mov.w   r0, @(2, r2)              ! r0 == 2
 nop
-
 .ORG 0x9238
 copy_rx_to_tx: .word 0x0
 

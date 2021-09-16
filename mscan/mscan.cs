@@ -499,24 +499,23 @@ namespace mscan
                             {
                                 // TODO: support 1D, 2D, 3D tables
                                 string category;
-                                int tableAddress, loadAddress, loadElem, rpmAddress, rpmElem;
 
                                 textBoxConsole.AppendText("READROM> Table: " + tableName + " ..." + Environment.NewLine);
 
                                 try
                                 {
                                     category = tableNode.Attributes["category"].InnerText;
-                                    tableAddress = Convert.ToInt32(tableNode.Attributes["address"].InnerText, 16);
-                                    loadAddress = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["address"].InnerText, 16);
-                                    loadElem = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["elements"].InnerText);
-                                    rpmAddress = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["address"].InnerText, 16);
-                                    rpmElem = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["elements"].InnerText);
+                                    var tableAddress = Convert.ToUInt32(tableNode.Attributes["address"].InnerText, 16);
+                                    var loadAddress = Convert.ToUInt32(tableNode.ChildNodes[0].Attributes["address"].InnerText, 16);
+                                    var loadElem = Convert.ToInt32(tableNode.ChildNodes[0].Attributes["elements"].InnerText);
+                                    var rpmAddress = Convert.ToUInt32(tableNode.ChildNodes[1].Attributes["address"].InnerText, 16);
+                                    var rpmElem = Convert.ToInt32(tableNode.ChildNodes[1].Attributes["elements"].InnerText);
 
-                                    Buffer.BlockCopy(DMAReadAddress(tableAddress, loadElem * rpmElem), 0, mROMFile, tableAddress, loadElem * rpmElem);
+                                    Buffer.BlockCopy(DMAReadAddress(tableAddress, loadElem * rpmElem), 0, mROMFile, (int)tableAddress, loadElem * rpmElem);
                                     progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
-                                    Buffer.BlockCopy(DMAReadAddress(loadAddress, 2 * loadElem), 0, mROMFile, loadAddress, 2 * loadElem);
+                                    Buffer.BlockCopy(DMAReadAddress(loadAddress, 2 * loadElem), 0, mROMFile, (int)loadAddress, 2 * loadElem);
                                     progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
-                                    Buffer.BlockCopy(DMAReadAddress(rpmAddress, 2 * rpmElem), 0, mROMFile, rpmAddress, 2 * rpmElem);
+                                    Buffer.BlockCopy(DMAReadAddress(rpmAddress, 2 * rpmElem), 0, mROMFile, (int)rpmAddress, 2 * rpmElem);
                                     progressBarReadROM.Value = ++cnt * 100 / totalProgressCnt;
                                 }
                                 catch
@@ -549,7 +548,7 @@ namespace mscan
             }
         }
 
-        Byte[] DMAReadAddress(int address, int length)
+        Byte[] DMAReadAddress(uint address, int length)
         {
             Byte[] data = null;
 
@@ -575,7 +574,7 @@ namespace mscan
                     msg.DataSize = LOG_MSG_SIZE;
                     for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
 
-                    int offset = address + byteCnt;
+                    int offset = (int)address + byteCnt;
                     int pktCnt = Math.Min(0x100, (length - byteCnt + LOG_DAT_SIZE - 1) / LOG_DAT_SIZE);
 
                     msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
@@ -632,106 +631,71 @@ namespace mscan
             return data;
         }
 
+        void DMAWriteAddress(uint address, Byte[] data, int length)
+        {
+            if (length > 0)
+            {
+                j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
+                IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
+                j2534.eError1 ret;
+                uint numMsgs = 1;
+
+                for (int byteCnt = 0; byteCnt < length; byteCnt += LOG_DAT_SIZE)
+                {
+                    msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
+                    msg.RxStatus = 0;
+                    msg.TxFlags = 0;
+                    msg.Timestamp = 0;
+                    msg.ExtraDataIndex = 0;
+                    msg.DataSize = LOG_MSG_SIZE;
+                    for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+
+                    int offset = (int)address + byteCnt;
+                    int msgByteCnt = Math.Min(LOG_DAT_SIZE, length - byteCnt);
+
+                    msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
+                    msg.Data[0x01] = (Byte)(msgByteCnt & 0xFF);
+                    msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_WRITE;
+                    msg.Data[0x03] = (Byte)((offset >> 8) & 0xFF);
+                    msg.Data[0x04] = (Byte)((offset >> 0) & 0xFF);
+                    Array.Copy(data, byteCnt, msg.Data, 5, msgByteCnt);
+
+                    // checksum
+                    for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
+                    // trailer
+                    msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+
+                    do
+                    {
+                        numMsgs = 1;
+                        Marshal.StructureToPtr(msg, pMsg, false);
+                        ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
+                    } while (ret != j2534.eError1.ERR_SUCCESS);
+
+                }
+
+                Marshal.FreeHGlobal(pMsg);
+            }
+        }
+
+
         void Test()
         {
-            j2534.PASSTHRU_MSG msg = new j2534.PASSTHRU_MSG();
-            IntPtr pMsg = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(j2534.PASSTHRU_MSG)));
-            j2534.eError1 ret;
-            uint numMsgs = 1;
+            Byte[] data = new Byte[4];
+            Byte[] readData = null;
 
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = LOG_MSG_SIZE;
-            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
+            data[0] = 0x02;
+            data[1] = 0x01;
+            data[2] = 0x07;
+            data[3] = 0x05;
 
-            uint offset = 0x9C00;
+            DMAWriteAddress(0xFFFF9C00, data, data.Length);
 
-            msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
-            msg.Data[0x01] = (Byte)3;
-            msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_WRITE;
-            msg.Data[0x03] = (Byte)((offset >> 8) & 0xFF);
-            msg.Data[0x04] = (Byte)((offset >> 0) & 0xFF);
-            msg.Data[0x05] = 0x2;
-            msg.Data[0x06] = 0x1;
-            msg.Data[0x07] = 0x3;
+            readData = DMAReadAddress(0xFFFF9C00, LOG_DAT_SIZE);
 
-            // checksum
-            for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
-            // trailer
-            msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
+            DMAWriteAddress(0xFFFF9C04, data, data.Length);
 
-            do
-            {
-                numMsgs = 1;
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-            } while (ret != j2534.eError1.ERR_SUCCESS);
-
-            // get response
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = 0;
-
-            do
-            {
-                numMsgs = 1;
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                Marshal.PtrToStructure(pMsg, msg);
-            } while (ret != j2534.eError1.ERR_BUFFER_EMPTY);
-
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = LOG_MSG_SIZE;
-            for (uint i = 0; i < msg.DataSize; i++) msg.Data[i] = 0x0;
-
-            offset = 0xFFFF9C00;
-
-            msg.Data[0x00] = (Byte)eLogMsgType.LOG_COPY;
-            msg.Data[0x01] = (Byte)1;
-            msg.Data[0x02] = (Byte)eLogScratchType.SCRATCH_READ;
-            msg.Data[0x03] = (Byte)((offset >> 24) & 0xFF);
-            msg.Data[0x04] = (Byte)((offset >> 16) & 0xFF);
-            msg.Data[0x05] = (Byte)((offset >> 8) & 0xFF);
-            msg.Data[0x06] = (Byte)((offset >> 0) & 0xFF);
-            // checksum
-            for (uint i = 0; i < LOG_MSG_SIZE - 2; i++) msg.Data[LOG_MSG_SIZE - 2] += msg.Data[i];
-            // trailer
-            msg.Data[LOG_MSG_SIZE - 1] = TRAILER_VALUE;
-
-            do
-            {
-                numMsgs = 1;
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruWriteMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-            } while (ret != j2534.eError1.ERR_SUCCESS);
-
-            // get response
-            msg.ProtocolID = (uint)j2534.eProtocol1.ISO9141;
-            msg.RxStatus = 0;
-            msg.TxFlags = 0;
-            msg.Timestamp = 0;
-            msg.ExtraDataIndex = 0;
-            msg.DataSize = 0;
-
-            do
-            {
-                numMsgs = 1;
-                Marshal.StructureToPtr(msg, pMsg, false);
-                ret = (j2534.eError1)j2534.PassThruReadMsgs(mChannelId, pMsg, ref numMsgs, TIMEOUT);
-                Marshal.PtrToStructure(pMsg, msg);
-            } while (ret != j2534.eError1.ERR_BUFFER_EMPTY);
-
-            Marshal.FreeHGlobal(pMsg);
+            readData = DMAReadAddress(0xFFFF9C00, LOG_DAT_SIZE);
         }
 
         j2534.PASSTHRU_MSG rmsg = new j2534.PASSTHRU_MSG();
@@ -749,7 +713,6 @@ namespace mscan
                 rmsg.Timestamp = 0;
                 rmsg.ExtraDataIndex = 0;
                 rmsg.DataSize = 0;
-
                 uint numMsgs = 1;
                 Marshal.StructureToPtr(rmsg, rpMsg, false);
 
