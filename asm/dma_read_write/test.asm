@@ -40,7 +40,7 @@ skip:
 bra     exit:
 nop
 .ORG 0x9168
-check_offset:
+check_offset: .space
 mov.w   @(4, r8), r0
 extu.w  r0, r10
 mov     r10, r8
@@ -72,19 +72,33 @@ bra     memcpy_read_tgt:
 mov     #0x2c, r6
 
 .ORG 0x91C8
-get_ram_buffer_info: nop
+get_ram_buffer_info: .word 0x0
+
+.ORG 0x91D2
+tst     #4, r0                    ! read (1,5) are checked earlier.  write (4) tested here
+bf      set_800:
+cmp/eq  #2, r0
+bf      copy_rx_to_tx:
+mov.w   r0, @(2, r2)              ! r0 == 2
+nop
+
+.ORG 0x9238
+copy_rx_to_tx: .word 0x0
 
 .ORG 0x924C
-memcpy_read_tgt: nop
+memcpy_read_tgt: .word 0x0
+
+.ORG 0x928E
+set_800: .word 0x0
 
 .ORG 0x929A
 bra     check_new:
 tst     #0x40, r0
 
 .ORG 0x93B4
-RAM_DMA_MODE87_BUFFER:            .long 0x12345678
+RAM_DMA_MODE87_BUFFER: .long 0x0
 .ORG 0x93CC
-RAM_DMA_RX_BUF:                   .long 0x12345678
+RAM_DMA_RX_BUF: .long 0x0
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -105,9 +119,8 @@ jsr     @r10
 mov     r8, r5
 extu.w  r0, r6
 
-.ORG 0x94A8
+fix: .ORG 0x94A8
 ! Writes
-fix:
 mov.w   @(0x14,r14), r0
 extu.w  r0, r9
 mov.l   RAM_DMA_MODE87_BUFFER2, r5
@@ -125,15 +138,17 @@ memcpy_write_tgt:
 mov.l   memcpy, r10
 jsr     @r10
 add     #6, r4
-nowrite:
-nop
+.ORG 0x94C8
+nowrite: .word 0x0
 
 .ORG 0x9594
-exit: nop
+exit: .word 0x0
 
 .ORG 0x9678
-sub:                              .long 0x12345678
+sub: .word 0x0
+
 .ORG 0x9680
-memcpy:                           .long 0x12345678
+memcpy: .word 0x0
+
 .ORG 0x9684
-RAM_DMA_MODE87_BUFFER2:           .long 0x12345678
+RAM_DMA_MODE87_BUFFER2: .long 0x0

@@ -1,1 +1,2 @@
 sh-elf-as test.asm -o test.o
+dd bs=52 skip=1 if=test.o of=test_noheader.o
