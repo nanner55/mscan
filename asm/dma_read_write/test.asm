@@ -111,14 +111,15 @@ mov     #0x2c, r6
 
 .ORG 0x949A
 cmp/hi  r10, r0
-bf      fix:
+bf      nooverflow:
 mov     r10, r4
 mov.l   sub, r10
 jsr     @r10
 mov     r8, r5
 extu.w  r0, r6
 
-fix: .ORG 0x94A8
+.ORG 0x94A8
+nooverflow:
 ! Writes
 mov.w   @(0x14,r14), r0
 extu.w  r0, r9
